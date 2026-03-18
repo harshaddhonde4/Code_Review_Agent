@@ -95,6 +95,32 @@ def build_agent() -> Agent:
     )
 
 
+def _extract_json(text: str) -> dict | None:
+    """Find the largest valid review-JSON object inside a string."""
+    best = None
+    for i in range(len(text)):
+        if text[i] != '{':
+            continue
+        depth = 0
+        for j in range(i, len(text)):
+            if text[j] == '{':
+                depth += 1
+            elif text[j] == '}':
+                depth -= 1
+            if depth == 0:
+                try:
+                    obj = json.loads(text[i:j + 1])
+                    if isinstance(obj, dict) and "sections" in obj:
+                        return obj  # best possible match
+                    if isinstance(obj, dict) and ("repo_name" in obj or "overall_score" in obj):
+                        if best is None or len(text[i:j + 1]) > len(json.dumps(best)):
+                            best = obj
+                except json.JSONDecodeError:
+                    pass
+                break  # this opening brace is done, move to next
+    return best
+
+
 def run_review(repo_url: str) -> dict:
     """Run the agent and parse the JSON report."""
     agent = build_agent()
@@ -118,8 +144,17 @@ Return your full JSON report now.
         response = agent.run(prompt)
         raw = response.content if hasattr(response, "content") else str(response)
     except Exception as e:
+        error_str = str(e)
         print(f"Error calling Groq API: {e}")
-        return _fallback_report(repo_path, f"Agent failed: {str(e)[:300]}")
+
+        # Groq's small models often fail tool calling but still produce
+        # the review JSON inside the error's 'failed_generation' field.
+        recovered = _extract_json(error_str)
+        if recovered:
+            print("Recovered review JSON from failed_generation.")
+            return recovered
+
+        return _fallback_report(repo_path, f"Agent failed: {error_str[:300]}")
 
     # Strip accidental markdown fences
     raw = raw.strip()
