@@ -1,0 +1,18 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment
+.env
+
+# Test artifacts
+test_*.py
+test_*.pdf
+
+# Reports (generated at runtime)
+reports/
+
+# IDE
+.vscode/
+.idea/
